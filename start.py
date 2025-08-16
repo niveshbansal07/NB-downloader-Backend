@@ -89,19 +89,17 @@ def main():
     print("\nPress Ctrl+C to stop all servers")
     
     # Start backend in a separate thread
-    backend_thread = threading.Thread(target=start_backend, daemon=True)
-    backend_thread.start()
-    
-    # Wait a moment for backend to start
-    time.sleep(3)
-    
-    # Start frontend
-    try:
-        start_frontend()
-    except KeyboardInterrupt:
-        print("\n🛑 Shutting down...")
+backend_thread = threading.Thread(target=start_backend, daemon=True)
+backend_thread.start()
+
+# Wait backend ready
+time.sleep(3)
+
+# Start frontend
+start_frontend()
     
     print("👋 Goodbye!")
 
 if __name__ == "__main__":
     main()
+
