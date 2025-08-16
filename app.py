@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import os
 import tempfile
@@ -56,7 +57,7 @@ async def preview_video(url: str = Query(..., description="YouTube video URL")):
             raise HTTPException(status_code=400, detail="Invalid YouTube URL")
         
         # Get video information
-        video_info = await video_processor.get_video_info(url)
+        video_info = video_processor.get_video_info(url)
         
         return {
             "success": True,
@@ -81,10 +82,10 @@ async def download_video(
             raise HTTPException(status_code=400, detail="Invalid YouTube URL")
         
         # Get video info first to validate
-        video_info = await video_processor.get_video_info(url)
+        video_info = video_processor.get_video_info(url)
         
         # Download and merge video
-        output_file, filename = await video_processor.download_and_merge(url)
+        output_file, filename = await asyncio.to_thread(video_processor.download_and_merge, url)
         
         # Check file size
         file_size = os.path.getsize(output_file)
@@ -123,13 +124,25 @@ async def health_check():
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
     """Handle 404 errors"""
-    return {"error": "Endpoint not found", "message": "The requested endpoint does not exist"}
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "Endpoint not found",
+            "message": "The requested endpoint does not exist"
+        }
+    )
 
 @app.exception_handler(500)
 async def internal_error_handler(request, exc):
     """Handle 500 errors"""
     logger.error(f"Internal server error: {str(exc)}")
-    return {"error": "Internal server error", "message": "Something went wrong on our end"}
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "message": "Something went wrong on our end"
+        }
+    )
 
 if __name__ == "__main__":
     import uvicorn
