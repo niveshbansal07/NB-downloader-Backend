@@ -9,7 +9,6 @@ import sys
 import subprocess
 import time
 import threading
-import webbrowser
 from pathlib import Path
 
 def check_ffmpeg():
@@ -40,13 +39,12 @@ def install_dependencies():
 def start_backend():
     """Start the FastAPI backend server"""
     print("🚀 Starting backend server...")
-    os.chdir('backend')
     try:
         subprocess.run([
-            sys.executable, '-m', 'uvicorn', 
-            'app:app', 
-            '--reload', 
-            '--host', '0.0.0.0', 
+            sys.executable, '-m', 'uvicorn',
+            'app:app',   # app.py root me hai
+            '--reload',
+            '--host', '0.0.0.0',
             '--port', '8000'
         ], check=True)
     except KeyboardInterrupt:
@@ -71,8 +69,8 @@ def main():
     print("=" * 50)
     
     # Check if we're in the right directory
-    if not Path('backend').exists() or not Path('frontend').exists():
-        print("❌ Please run this script from the project root directory")
+    if not Path('frontend').exists():
+        print("❌ 'frontend' folder not found. Please run this script from the project root directory")
         sys.exit(1)
     
     # Check ffmpeg
