@@ -72,7 +72,7 @@ class VideoProcessor:
         except Exception as e:
             logger.error(f"Download/Merge error: {str(e)}")
             self._cleanup_temp_files(temp_dir)
-            raise ValueError("Failed to download video")
+            raise ValueError(f"Failed to download video: {str(e)}")
 
     def _format_duration(self, seconds: int) -> str:
         if not seconds:
