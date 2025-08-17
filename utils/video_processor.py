@@ -3,6 +3,7 @@ import tempfile
 import yt_dlp
 import ffmpeg
 import logging
+import shutil
 from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
@@ -12,19 +13,16 @@ class VideoProcessor:
         self.temp_dir = temp_dir or tempfile.gettempdir()
         self.max_file_size = max_file_size
 
+    # ---------- Get Video Info ----------
     async def get_video_info(self, url: str) -> Dict:
         try:
-            ydl_opts = {
-                "quiet": True,
-                "no_warnings": True,
-                "extract_flat": False,
-            }
+            ydl_opts = {"quiet": True, "no_warnings": True}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
 
             return {
                 "title": info.get("title", "Unknown Title"),
-                "thumbnail": (info.get("thumbnail")),
+                "thumbnail": info.get("thumbnail"),
                 "duration": self._format_duration(info.get("duration", 0)),
                 "duration_seconds": info.get("duration", 0),
                 "formats": self._extract_qualities(info.get("formats", [])),
@@ -33,39 +31,54 @@ class VideoProcessor:
                 "like_count": info.get("like_count", 0),
                 "webpage_url": info.get("webpage_url", url),
             }
+
         except Exception as e:
+            logger.error(f"Video info error: {str(e)}")
             raise ValueError(f"Failed to extract video information: {str(e)}")
 
+    # ---------- Download & Merge ----------
     async def download_and_merge(self, url: str, progress_callback=None) -> Tuple[str, str]:
         temp_dir = tempfile.mkdtemp(dir=self.temp_dir)
         video_file = os.path.join(temp_dir, "video.mp4")
         audio_file = os.path.join(temp_dir, "audio.m4a")
+        output_file = os.path.join(temp_dir, "merged_video.mp4")
 
         try:
-            # Download video
+            # Video Download
             v_opts = {
-                "format": "bestvideo[ext=mp4]",
+                "format": "bestvideo[ext=mp4]/bestvideo",
                 "outtmpl": video_file,
                 "progress_hooks": [progress_callback] if progress_callback else None,
             }
             with yt_dlp.YoutubeDL(v_opts) as ydl:
                 ydl.download([url])
 
-            # Download audio
+            if not os.path.exists(video_file):
+                raise FileNotFoundError("Video file was not downloaded.")
+
+            # Audio Download
             a_opts = {
-                "format": "bestaudio[ext=m4a]",
+                "format": "bestaudio[ext=m4a]/bestaudio",
                 "outtmpl": audio_file,
                 "progress_hooks": [progress_callback] if progress_callback else None,
             }
             with yt_dlp.YoutubeDL(a_opts) as ydl:
                 ydl.download([url])
 
-            # Merge
-            output_file = os.path.join(temp_dir, "merged_video.mp4")
+            if not os.path.exists(audio_file):
+                raise FileNotFoundError("Audio file was not downloaded.")
+
+            # Merge with ffmpeg
             ffmpeg.input(video_file).output(
-                ffmpeg.input(audio_file), output_file,
-                vcodec="copy", acodec="aac", strict="experimental"
+                ffmpeg.input(audio_file),
+                output_file,
+                vcodec="copy",
+                acodec="aac",
+                strict="experimental"
             ).overwrite_output().run(capture_stdout=True, capture_stderr=True)
+
+            if not os.path.exists(output_file):
+                raise FileNotFoundError("Failed to create merged file.")
 
             return output_file, self._get_filename_from_url(url)
 
@@ -74,6 +87,7 @@ class VideoProcessor:
             self._cleanup_temp_files(temp_dir)
             raise ValueError(f"Failed to download video: {str(e)}")
 
+    # ---------- Helper Functions ----------
     def _format_duration(self, seconds: int) -> str:
         if not seconds:
             return "Unknown"
@@ -90,10 +104,9 @@ class VideoProcessor:
                 info = ydl.extract_info(url, download=False)
                 title = info.get("title", "video")
                 return "".join(c for c in title if c.isalnum() or c in " -_") + ".mp4"
-        except:
+        except Exception:
             return "downloaded_video.mp4"
 
     def _cleanup_temp_files(self, temp_dir: str):
-        import shutil
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
