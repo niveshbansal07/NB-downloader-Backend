@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NB Downloader Startup Script
+NB Downloader Startup Script - Updated
 """
 
 import os
@@ -10,6 +10,20 @@ import time
 import threading
 from pathlib import Path
 
+# === CONFIGURATION ===
+# Agar backend Railway pe deployed hai, yahan URL set karo
+RAILWAY_BACKEND_URL = "https://your-backend.up.railway.app"
+USE_REMOTE_BACKEND = True  # True = Railway, False = local
+
+# Local backend config
+LOCAL_BACKEND_HOST = "0.0.0.0"
+LOCAL_BACKEND_PORT = "8000"
+
+# Frontend config
+FRONTEND_PORT = "3000"
+
+
+# === UTILITY FUNCTIONS ===
 def check_ffmpeg():
     try:
         subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
@@ -18,6 +32,7 @@ def check_ffmpeg():
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("❌ ffmpeg not installed. Please install ffmpeg for downloads to work.")
         return False
+
 
 def install_dependencies():
     print("📦 Installing Python dependencies...")
@@ -29,46 +44,61 @@ def install_dependencies():
         print(f"❌ Failed to install dependencies: {e}")
         return False
 
+
+# === BACKEND ===
 def start_backend():
-    print("🚀 Starting backend server...")
+    if USE_REMOTE_BACKEND:
+        print(f"🌐 Using remote backend: {RAILWAY_BACKEND_URL}")
+        return  # No need to start local backend
+    print("🚀 Starting local backend server...")
     try:
         subprocess.run([
             sys.executable, '-m', 'uvicorn',
             'app:app',
-            '--host', '0.0.0.0',
-            '--port', '8000'
+            '--host', LOCAL_BACKEND_HOST,
+            '--port', LOCAL_BACKEND_PORT
         ], check=True)
     except KeyboardInterrupt:
         print("\n🛑 Backend server stopped")
 
+
+# === FRONTEND ===
 def start_frontend():
     print("🌐 Starting frontend server...")
-    os.chdir('frontend')
-    try:
-        subprocess.run([sys.executable, '-m', 'http.server', '3000'], check=True)
-    except KeyboardInterrupt:
-        print("\n🛑 Frontend server stopped")
-
-def main():
-    print("🎬 NB Downloader - Development Startup")
-    print("=" * 50)
-
     if not Path('frontend').exists():
         print("❌ 'frontend' folder not found. Run this from project root.")
         sys.exit(1)
+
+    os.chdir('frontend')
+
+    # Set API URL for frontend (replace in your config file if needed)
+    if USE_REMOTE_BACKEND:
+        print(f"🔗 Frontend will use remote backend: {RAILWAY_BACKEND_URL}")
+    else:
+        print(f"🔗 Frontend will use local backend: http://{LOCAL_BACKEND_HOST}:{LOCAL_BACKEND_PORT}")
+
+    try:
+        subprocess.run([sys.executable, '-m', 'http.server', FRONTEND_PORT], check=True)
+    except KeyboardInterrupt:
+        print("\n🛑 Frontend server stopped")
+
+
+# === MAIN ===
+def main():
+    print("🎬 NB Downloader - Development Startup")
+    print("=" * 50)
 
     check_ffmpeg()
     install_dependencies()
 
     print("\n🎯 Starting servers...")
-    print("Backend: http://localhost:8000")
-    print("Frontend: http://localhost:3000")
+    if not USE_REMOTE_BACKEND:
+        backend_thread = threading.Thread(target=start_backend, daemon=True)
+        backend_thread.start()
+        time.sleep(3)
 
-    backend_thread = threading.Thread(target=start_backend, daemon=True)
-    backend_thread.start()
-
-    time.sleep(3)
     start_frontend()
+
 
 if __name__ == "__main__":
     main()
