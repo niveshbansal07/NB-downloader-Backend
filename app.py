@@ -4,7 +4,12 @@ from fastapi.responses import FileResponse, JSONResponse
 import os
 import asyncio
 import logging
-from utils.video_processor import VideoProcessor
+
+# Import utils correctly (assuming utils folder is in same root directory)
+try:
+    from utils.video_processor import VideoProcessor
+except ModuleNotFoundError:
+    raise ImportError("❌ Could not import VideoProcessor. Make sure utils/video_processor.py exists")
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +25,7 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # You can restrict to your frontend domain for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -60,12 +65,18 @@ async def download_video(url: str = Query(...), background_tasks: BackgroundTask
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
     try:
         output_file, filename = await asyncio.to_thread(video_processor.download_and_merge, url)
+
+        if not os.path.exists(output_file):
+            raise HTTPException(status_code=500, detail="Download failed (file not found)")
+
         file_size = os.path.getsize(output_file)
         if file_size > video_processor.max_file_size:
             video_processor.cleanup_file(output_file)
             raise HTTPException(status_code=413, detail="File too large")
+
         if background_tasks:
             background_tasks.add_task(video_processor.cleanup_file, output_file)
+
         return FileResponse(
             path=output_file,
             filename=filename,
@@ -84,14 +95,10 @@ async def health_check():
 # 404 handler
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
-    return JSONResponse(status_code=404, content={"error": "Endpoint not found", "message": "The requested endpoint does not exist"})
+    return JSONResponse(status_code=404, content={"error": "Endpoint not found"})
 
 # 500 handler
 @app.exception_handler(500)
 async def internal_error_handler(request, exc):
     logger.error(f"Internal server error: {str(exc)}")
-    return JSONResponse(status_code=500, content={"error": "Internal server error", "message": "Something went wrong on our end"})
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
