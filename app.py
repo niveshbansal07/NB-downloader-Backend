@@ -2,10 +2,9 @@ from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 import os
-import asyncio
 import logging
 
-# Import utils correctly (assuming utils folder is in same root directory) nB
+# Import utils correctly (assuming utils folder is in same root directory)
 try:
     from utils.video_processor import VideoProcessor
 except ModuleNotFoundError:
@@ -25,7 +24,7 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict to your frontend domain for production
+    allow_origins=["*"],  # restrict in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,11 +51,11 @@ async def preview_video(url: str = Query(..., description="YouTube video URL")):
     if not url or ("youtube.com" not in url and "youtu.be" not in url):
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
     try:
-        video_info = video_processor.get_video_info(url)
+        video_info = await video_processor.get_video_info(url)  # FIXED (added await)
         return {"success": True, "data": video_info}
     except Exception as e:
         logger.error(f"Preview error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get video preview")
+        raise HTTPException(status_code=500, detail=f"Failed to get video preview: {str(e)}")  # show error
 
 # Download endpoint
 @app.get("/download")
@@ -64,18 +63,18 @@ async def download_video(url: str = Query(...), background_tasks: BackgroundTask
     if not url or ("youtube.com" not in url and "youtu.be" not in url):
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
     try:
-        output_file, filename = await asyncio.to_thread(video_processor.download_and_merge, url)
+        output_file, filename = await video_processor.download_and_merge(url)  # FIXED
 
         if not os.path.exists(output_file):
             raise HTTPException(status_code=500, detail="Download failed (file not found)")
 
         file_size = os.path.getsize(output_file)
         if file_size > video_processor.max_file_size:
-            video_processor.cleanup_file(output_file)
+            os.remove(output_file)  # FIXED cleanup
             raise HTTPException(status_code=413, detail="File too large")
 
         if background_tasks:
-            background_tasks.add_task(video_processor.cleanup_file, output_file)
+            background_tasks.add_task(os.remove, output_file)  # FIXED cleanup
 
         return FileResponse(
             path=output_file,
@@ -85,7 +84,7 @@ async def download_video(url: str = Query(...), background_tasks: BackgroundTask
         )
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to download video")
+        raise HTTPException(status_code=500, detail=f"Failed to download video: {str(e)}")  # FIXED
 
 # Health
 @app.get("/health")
